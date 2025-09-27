@@ -1,22 +1,30 @@
-# agent/agent.py
 import os
 import json
 import re
 from dotenv import load_dotenv
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
-from langchain_community.chat_models import ChatOpenAI  # OpenRouter via OpenAI-compatible API
+
+# Load environment variables
+load_dotenv()
 
 # -----------------------------
-# Load environment variables
+# API Key & Model Setup
 # -----------------------------
-load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "gpt-4o-mini")
 
-# Ensure OpenRouter works as OpenAI endpoint
+if not OPENROUTER_API_KEY:
+    raise ValueError("❌ OPENROUTER_API_KEY is missing. Please set it in your .env or Streamlit Secrets.")
+
+# Set OpenRouter as OpenAI-compatible
 os.environ["OPENAI_API_KEY"] = OPENROUTER_API_KEY
 os.environ["OPENAI_API_BASE"] = "https://openrouter.ai/api/v1"
+
+# -----------------------------
+# LangChain Imports
+# -----------------------------
+from langchain.prompts import PromptTemplate
+from langchain_openai import ChatOpenAI
+from langchain.schema.runnable import RunnableSequence
 
 # -----------------------------
 # Prompt Template
@@ -43,9 +51,6 @@ Return ONLY a JSON object with FOUR top-level keys:
 - strategy: list of actionable steps
 """
 
-# -----------------------------
-# LangChain Setup
-# -----------------------------
 prompt = PromptTemplate(
     input_variables=["journal", "dream", "intention", "priorities", "date"],
     template=PROMPT_TEMPLATE
@@ -56,37 +61,34 @@ llm = ChatOpenAI(
     temperature=0.7
 )
 
-chain = LLMChain(llm=llm, prompt=prompt)
+# ✅ Modern chain pipeline using |
+chain = prompt | llm
 
 # -----------------------------
-# Run Reflection Agent
+# Agent Function
 # -----------------------------
 def run_reflection_agent(journal, dream="", intention="", priorities="", date=""):
-    """
-    Runs the LangChain agent via OpenRouter (OpenAI-compatible) to generate:
-    - reflection summary
-    - dream interpretation
-    - mindset insight
-    - suggested day strategy
-    Returns a dict with keys: reflection, dream_interpretation, mindset_insight, strategy
-    """
     try:
-        output = chain.run(
-            journal=journal,
-            dream=dream,
-            intention=intention,
-            priorities=priorities,
-            date=date
-        )
+        # ✅ Modern invoke() instead of run()
+        output = chain.invoke({
+            "journal": journal,
+            "dream": dream,
+            "intention": intention,
+            "priorities": priorities,
+            "date": date
+        })
 
-        # Clean code block markers if present
-        output_clean = re.sub(r"```(?:json)?", "", output, flags=re.IGNORECASE).strip()
+        # Some LLMs return message objects, handle gracefully
+        if hasattr(output, "content"):
+            output_text = output.content
+        else:
+            output_text = str(output)
 
-        # Extract first valid JSON object
+        # Clean & parse JSON
+        output_clean = re.sub(r"```(?:json)?", "", output_text, flags=re.IGNORECASE).strip()
         match = re.search(r"\{.*\}", output_clean, re.DOTALL)
         json_str = match.group(0) if match else "{}"
 
-        # Parse JSON safely
         try:
             data = json.loads(json_str)
         except json.JSONDecodeError:

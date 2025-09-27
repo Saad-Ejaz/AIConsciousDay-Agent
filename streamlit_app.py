@@ -1,10 +1,11 @@
 import os
 import json
+from datetime import date
 from dotenv import load_dotenv
-import streamlit as st
+import streamlit as st   # ✅ MISSING IMPORT FIXED
+
 from agent.agent import run_reflection_agent
 from db import init_db, insert_entry, fetch_entry_by_date, fetch_all_dates
-from datetime import date
 
 # Load environment variables
 load_dotenv()
